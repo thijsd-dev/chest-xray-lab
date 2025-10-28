@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+
+# Data & cache (keep repo lean)
+data/raw/
+data/processed/
+outputs/
+*.npz
+*.npy
+*.pt
+*.pth
+*.ckpt
+
+# Colab/OS noise
+.DS_Store
+.env
