@@ -5,8 +5,6 @@ __pycache__/
 *.egg-info/
 
 # Data & cache (keep repo lean)
-data/raw/
-data/processed/
 outputs/
 *.npz
 *.npy
@@ -17,3 +15,8 @@ outputs/
 # Colab/OS noise
 .DS_Store
 .env
+reports/sofi_occlusion_cxr_report/*.aux
+reports/sofi_occlusion_cxr_report/*.log
+reports/sofi_occlusion_cxr_report/*.out
+reports/sofi_occlusion_cxr_report/*.toc
+reports/sofi_occlusion_cxr_report/*.pdf

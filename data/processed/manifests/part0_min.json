@@ -1,0 +1,13 @@
+{
+  "ckpt_path": "/content/drive/MyDrive/code/chest-xray-lab/checkpoints/best_model.pt",
+  "seed": 42,
+  "preproc_hash": "3a0b791144",
+  "train_mean01": 0.5751695000756363,
+  "train_std01": 0.17259653521976215,
+  "csv": {
+    "train": "/content/drive/MyDrive/code/chest-xray-lab/data/processed/manifests/train_cached.csv",
+    "val": "/content/drive/MyDrive/code/chest-xray-lab/data/processed/manifests/val_cached.csv",
+    "test": "/content/drive/MyDrive/code/chest-xray-lab/data/processed/manifests/test_cached.csv"
+  },
+  "manifests_dir": "/content/drive/MyDrive/code/chest-xray-lab/data/processed/manifests"
+}

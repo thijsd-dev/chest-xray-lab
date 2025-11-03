@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person721_virus_1340.jpeg",
+  "method": "DeepLIFT",
+  "K": 59,
+  "baseline_mode": "blur",
+  "p0": 0.7338572144508362,
+  "auc_raw": 1.1090779304504395,
+  "rand_raw_mean": 1.1383395592371623,
+  "rand_raw_std": 0.07162531236441147,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person721_virus_1340.jpeg",
+  "method": "OccSensitivity",
+  "K": 79,
+  "baseline_mode": "dataset-mean",
+  "p0": 0.7338572144508362,
+  "auc_raw": 0.7745052576065063,
+  "rand_raw_mean": 0.9165539095799128,
+  "rand_raw_std": 0.04235521876383678,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

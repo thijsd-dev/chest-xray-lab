@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person115_virus_219.jpeg",
+  "method": "GradCAM",
+  "K": 99,
+  "baseline_mode": "blur",
+  "p0": 0.8984790444374084,
+  "auc_raw": 0.9457575678825378,
+  "rand_raw_mean": 0.9718213727076849,
+  "rand_raw_std": 0.03448439659269144,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

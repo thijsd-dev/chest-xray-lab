@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person475_bacteria_2025.jpeg",
+  "method": "ScoreCAM",
+  "K": 137,
+  "baseline_mode": "blur",
+  "p0": 0.969295084476471,
+  "auc_raw": 0.9375652074813843,
+  "rand_raw_mean": 0.9371318916479746,
+  "rand_raw_std": 0.024950377534981652,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

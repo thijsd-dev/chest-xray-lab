@@ -1,0 +1,485 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- encoding / fonts ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% --- math / tables / graphics ---
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+
+\title{Occlusion-based Explanations for Chest X-ray Classification\\[0.8em]
+\large SOFI tuning, occlusion baselines, segmentation ablations,\\
+\large and comparison to standard explainers}
+\author{Thijs Disseldorp}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+Deep convolutional models for chest X-ray classification can reach high accuracy, but their decisions remain difficult to interpret in a clinically meaningful way. This report examines occlusion-based explanation methods, in which parts of the image are progressively masked and the resulting change in the model's pneumonia probability is measured. An explanation strategy is considered stronger when its MoRF (Most Relevant First) retained curve drops quickly, i.e.\ the model loses confidence as soon as the most relevant regions are removed.
+
+This iteration focuses on SOFI (Sparseness-Optimized Feature Importance) as the primary explainer. SOFI is evaluated on several masking baselines and is always compared to a random ordering (RAND) to check that the optimizer finds more informative segments than chance. The goal is to (i) stabilise the pipeline (correct inputs, standardised masking, sensible endpoints), (ii) understand the surprising MoRF behaviour observed in earlier runs, and (iii) compare SOFI against standard explanation methods (``SOTA'') under a well-justified occlusion baseline.
+
+Earlier runs showed an unexpected pattern: several MoRF curves decreased at the beginning and then increased again. In practice this behaviour can appear (i) when images that are not actually classified as pneumonia are explained, so $p_0$ is already low; (ii) when the masking value is image-dependent, so the ``fully masked'' image is not comparable across samples; or (iii) when the hill-climb is stopped too early and the segment order is not yet globally good. The rest of the report addresses these points and then studies the effect of the number of segments and the occlusion baseline, as suggested in the project feedback.
+
+\subsection{Objectives}
+
+\begin{itemize}
+  \item Verify pipeline correctness: classification filtering, endpoint consistency, and curve length ($K{+}1$ for $K$ segments).
+  \item Compare four masking baselines on the same set of images and select,
+  for all main experiments, the operator that behaves most like a realistic
+  deletion (intuitive fully masked endpoint, stable curves). This turns
+  out to be the \emph{dataset-mean} baseline; black, white and blur are kept
+  only as auxiliary diagnostics.
+  \item Check the sensitivity of SOFI to hill-climb parameters (patience and
+  maximum iterations) on a small pilot grid, and fix a single configura-
+  tion that balances compute and performance for all subsequent runs.
+  \item Analyse the effect of the number of segments $K$ on MoRF behaviour
+  on the \emph{dataset-mean} baseline, to see whether changing $K$ can reduce
+  the mid-sequence spikes and late rises in the curves.
+  \item Provide qualitative visualisations and a SOTA comparison on the final
+  configuration (dataset-mean baseline, chosen $K$), to see how SOFI
+  and standard methods differ in both highlighted segments and MoRF
+  curves.
+\end{itemize}
+
+\subsection{Corrections to the experimental pipeline}
+\label{sec:corrections}
+
+\paragraph{(i) Enforcing true-positive explanations.}
+The explanation stage is intended to run on images that the classifier actually predicts as pneumonia. In the earlier version, images were taken from a set of positives but the prediction was not explicitly re-checked, which could in principle admit cases with $y{=}1$ but $\hat{y}{=}0$. The current sampling loop filters as follows:
+\begin{verbatim}
+for p, y in pairs:
+    if y != 1:
+        continue
+    g = load_gray01(p)
+    p0 = prob_pos(model, g, device)
+    pred = 1 if p0 >= thr else 0
+    if pred != y:
+        continue  # only keep correctly classified positives
+    scored.append((p, 1, float(p0)))
+\end{verbatim}
+This ensures that all MoRF curves start from a meaningful $p_0$ and directly
+addresses the concern about incorrectly classified images.
+
+\paragraph{(ii) Making the dataset-level mask explicit.}
+We want all ``dataset-mean'' runs to mask toward the \emph{same} value, namely the global training-set mean \texttt{MEAN01}. Earlier, the helper would quietly fall back to the image's own mean when this value was not given, so different images ended up with different masked targets. The code now calls the helper like this:
+\begin{verbatim}
+baseline = make_baseline(
+    g0,
+    mode=baseline_mode,
+    dataset_mean=MEAN01,
+)
+\end{verbatim}
+This is used \emph{only} when \texttt{baseline\_mode="dataset-mean"}. For the other modes (\texttt{"black"}, \texttt{"white"}, \texttt{"blur"}), we use their own fixed value or blurred image instead. This removes accidental per-image baselines and makes the MoRF endpoints comparable across images for each masking mode.
+
+\paragraph{(iii) Aligning SOTA explainers with the same masking.}
+In the earlier SOTA run (Grad$\times$Input, IG, DeepLIFT, GradCAM/ScoreCAM, occlusion sensitivity) the occlusion value was taken as the \emph{per-image} mean. For each individual image this is still internally consistent — all methods on that image were evaluated against the same masked target — but across images and across masking modes the endpoints were no longer on a common scale. To make the SOFI and SOTA curves directly comparable in the macro plots, all SOTA explainers are re-evaluated on the \emph{dataset-mean} baseline with the same segmentation and the same set of 10 correctly classified images.
+
+\section{Experimental setup}
+\label{sec:setup}
+
+This iteration keeps the scope deliberately narrow: all analyses are run on the same, small set of correctly classified pneumonia images (here: $N=10$) drawn from the test split after the true-positive filter in Section~\ref{sec:corrections}. Fixing the image set makes it possible to attribute differences in MoRF curves to the masking choice or to SOFI’s hyperparameters, not to sampling noise.
+
+\paragraph{Segmentation.}
+Unless stated otherwise, each image is segmented once into $K=100$ superpixels (SLIC-based, grayscale variant). SOFI and SOTA methods operate on this fixed segmentation. Section~\ref{sec:nseg-ablation} relaxes the $K=100$ assumption and tests alternative values.
+
+\paragraph{Masking baselines.}
+Four occlusion modes are evaluated on exactly the same 10 images:
+\begin{enumerate}
+  \item \textbf{dataset-mean} (\texttt{MEAN01}) — global baseline for the main
+  quantitative and qualitative experiments;
+  \item \textbf{black} ($0.0$);
+  \item \textbf{white} ($1.0$);
+  \item \textbf{blur} (Gaussian-smoothed version of the image).
+\end{enumerate}
+For each mode, the SOFI MoRF (retained) curve is computed and averaged over the 10 images. A random ordering (RAND, repeated) is also reported to show that SOFI is meaningfully better than chance.
+
+\section{Baseline comparison}
+\label{sec:baselines}
+
+Figure~\ref{fig:baseline-macros} shows the four ``macro'' plots (one per masking mode) computed on the same ten images, with the same segmentation ($K=100$) and the same SOFI settings.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{fig/sofi_baseline_figures.png}
+  \caption{SOFI retained curves for the four masking baselines (dataset-mean, black $0.0$, white $1.0$, blur) on the same 10 correctly classified images, all with the same segmentation ($K=100$) and SOFI configuration. Each panel shows per-image curves (coloured) and the macro-average (thick black).}
+  \label{fig:baseline-macros}
+\end{figure}
+
+All four modes show the expected first phase: after the first ${\sim}5$--$15$ segments are removed, the retained probability $p_t / p_0$ drops quickly. This indicates that, on this model and image set, SOFI is indeed pushing high–impact segments to the front of the order.
+
+From that point the baselines start to differ:
+
+\paragraph{Dataset-mean.}
+After a good initial drop, several curves start to oscillate and a few of them rise again near the tail. In these cases the masked image becomes very flat; the classifier still returns a small but non-zero pneumonia score on that flat input, so the ratio $p_t / p_0$ can temporarily increase. However, the overall trend of the macro curve is still downward and, crucially, the absolute probabilities on the fully masked CXRs are close to zero. This is the behaviour one expects from a realistic deletion baseline.
+
+\paragraph{Black ($0.0$) and white ($1.0$).}
+Both constant-intensity masks introduce high-contrast patches when many segments have been replaced. Once enough of the image is synthetic, the model may respond to edges or brightness patterns that are not related to the original pathology. In the macro curves this appears as a fairly pronounced upward trend once more than roughly half the segments have been masked; in some images the retained ratio even approaches or exceeds~1 near the end, i.e.\ the model can become as confident (or more confident) on the heavily black/white-patched CXR as on the original.
+
+\paragraph{Blur.}
+The blur baseline produces a similar U-shaped profile, and for many images the macro curve remains low for a long fraction of the sequence. At the same time, some fully blurred CXRs still look pneumonia-like to the classifier: their absolute pneumonia probability stays close to~1 even at $t{=}K$. In terms of the ratio $p_t/p_0$, this translates into curves that turn upwards and, in some cases, end near~1 on the fully masked image. This behaviour conflicts with the deletion interpretation.
+
+\medskip
+
+Overall, dataset-mean is the only baseline that (i) drives fully masked images to a low absolute pneumonia probability and (ii) has a macro curve that still trends downwards over the sequence, even if it exhibits spikes in the middle. Black, white and blur all show a clear upward drift in the tail and, for several images, a retained probability near~1 at full masking. Based on these observations, \textbf{dataset-mean is used as the primary baseline for all subsequent experiments}; the other baselines are kept as diagnostics to illustrate how sensitive MoRF behaviour is to the choice of occlusion value.
+
+For reference, Figure~\ref{fig:baseline-macros-rand} overlays the averaged RAND curve so that the gap to chance is visible for every masking mode.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig/sofi_baseline_with_rand.png}
+  \caption{Same as Figure~\ref{fig:baseline-macros}, now with the averaged RAND curve (black) overlaid. The vertical gap between SOFI and RAND is the information the optimiser extracts beyond chance.}
+  \label{fig:baseline-macros-rand}
+\end{figure}
+
+In all four modes, SOFI stays below RAND in the first, most informative part of the sequence (roughly until ${\sim}40$--$50$ masked segments for $K=100$). Near the tail the two curves come together because, at that point, every method is removing almost the entire image.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Mean retained AUC (lower is better) over the 10 images, per masking baseline.}
+  \label{tab:baseline-aucs}
+  \begin{tabular}{lccc}
+    \toprule
+    Baseline      & SOFI $\downarrow$ & RAND $\downarrow$ & Gap (RAND$-$SOFI) $\uparrow$ \\
+    \midrule
+    dataset-mean  & 0.48 $\pm$ 0.11   & 0.90 $\pm$ 0.03   & 0.42 \\
+    black 0.0     & 0.35 $\pm$ 0.10   & 0.88 $\pm$ 0.02   & 0.53 \\
+    white 1.0     & 0.57 $\pm$ 0.09   & 0.89 $\pm$ 0.02   & 0.32 \\
+    blur          & \textbf{0.29} $\pm$ 0.10   & 0.87 $\pm$ 0.02   & \textbf{0.58} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Numerically, blur gives both the lowest SOFI AUC and the largest gap to RAND.
+If one looked only at Figure~\ref{fig:baseline-macros-rand} and Table~\ref{tab:baseline-aucs},
+blur would seem to be the best baseline. The qualitative endpoint behaviour,
+however, is problematic: for black, white and blur, some fully masked CXRs still
+obtain high pneumonia probabilities (retained ratio near or above~1), whereas
+dataset-mean reliably drives the probability towards zero. For this reason,
+dataset-mean is preferred as the main deletion baseline despite its slightly
+higher AUC.
+
+Two technical points should be recorded here:
+
+\begin{enumerate}
+  \item \textbf{Late increase.} All baselines show some late increase once a large fraction of the image has been masked. For black, white and blur the late part of the macro curve clearly trends upwards. For dataset-mean the curve still exhibits spikes, but the overall trend continues downward. Two plausible causes for these rises are: (a) the remaining segments are mostly background or support structure, so masking them can move the image towards a distribution the model finds familiar; or (b) the hill-climb search has only found a locally good order for the low-importance tail, so swapping a few of those segments changes the tail visually without changing the AUC much.
+  \item \textbf{Values above 1.0.} Across the baselines a few curves temporarily exceed $1.0$. This is not the model producing probabilities \(>1\); it happens because we plot the \emph{ratio} $p_t / p_0$. If $p_0$ is modest (still a positive) and $p_t$ on the heavily masked image is slightly higher, the ratio can be $>1.0$.
+  \item \textbf{Metric sensitivity.} Because we look at retained ratios $p_t/p_0$, any non-monotonicity in $p_t$ is amplified when $p_0$ is small. In the dataset-mean progression examples (Section~\ref{sec:qualitative}) the absolute probabilities $p_t$ tend to drift downwards towards zero as more segments are masked, even when $p_t/p_0$ shows oscillations. This supports the interpretation that the spikes are mainly an endpoint/masking artefact rather than a sign that SOFI is discovering new, strongly predictive segments late in the sequence.
+\end{enumerate}
+
+\section{SOFI hyperparameter ablation}
+\label{sec:hc-ablation}
+
+SOFI uses a simple hill-climb over segment order, with two budget parameters:
+the maximum number of iterations (\texttt{max\_iters}) and an early-stopping
+patience. A small grid over patience scales
+$\{1.5K, 2.5K, 3.5K\}$ and max-iteration scales $\{3K, 5K, 7K\}$ was
+evaluated on a subset of images. Increasing \texttt{max\_iters} beyond $5K$
+only produced marginal AUC changes, and the patience criterion \emph{never}
+triggered: in all runs the optimiser used the full iteration budget.
+
+To balance compute and stability we therefore fix
+\texttt{patience} $= 2.5K$ and \texttt{max\_iters} $= 5K$ for all subsequent
+experiments on dataset-mean.
+
+\section{Segmentation ablation (dataset-mean)}
+\label{sec:nseg-ablation}
+
+Earlier feedback also asked how the number of segments $K$ affects
+the MoRF curves and, in particular, whether changing $K$ can reduce the
+mid-sequence spikes and late increases. To study this on the chosen
+baseline, we keep everything fixed to the dataset-mean setup (same 10
+correctly classified pneumonia images, same SOFI hyperparameters) and vary
+only the number of segments,
+\[
+K \in \{60, 80, 100, 120, 140\}.
+\]
+
+For each $K$ we recompute the averaged retained curve and plot it
+against the \emph{fraction} of segments masked, $t/K \in [0,1]$, so curves
+with different $K$ can be compared directly.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{fig/sofi_curves_k_same_scale.png}
+  \caption{SOFI retained probability $p_t/p_0$ for the dataset-mean baseline and
+  $K \in \{60,80,100,120,140\}$, all reparameterised to the same x-axis
+  $t/K \in [0,1]$. The informative part of the curve ($t/K \lesssim 0.4$--$0.5$) is
+  similar across $K$. All curves show some oscillation beyond $t/K \approx 0.6$,
+  but the macro trend remains downward and the fully masked endpoint is close to
+  zero for all $K$.}
+  \label{fig:seg-ablation}
+\end{figure}
+
+Qualitatively (Figure~\ref{fig:seg-ablation}), the prefix up to about
+$t/K \approx 0.4$--$0.5$ is almost identical across $K$: SOFI removes a few
+dozen segments and the retained probability drops sharply. Beyond that
+point the curves start to diverge and show method- and image-specific
+wiggles. Larger $K$ values tend to produce slightly smoother curves in the
+tail, but they do not remove the late oscillations entirely. This indicates
+that the rising spikes are primarily driven by the masking endpoint rather
+than by segmentation granularity.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Segmentation ablation on dataset-mean (10 images), SOFI with
+  max\_iters $=5K$ and patience $=2.5K$. Values are retained AUC (lower is
+  better). RAND is a random ordering.}
+  \label{tab:seg-ablation}
+  \begin{tabular}{lcc}
+    \toprule
+    $K$ & SOFI $\downarrow$ & RAND $\downarrow$ \\
+    \midrule
+     60  & 0.403 & 0.741 \\
+     80  & 0.347 & 0.752 \\
+    100  & 0.324 & 0.775 \\
+    120  & 0.333 & 0.773 \\
+    140  & \textbf{0.290} & 0.799 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:seg-ablation} shows that SOFI consistently improves as $K$
+increases from 60 to 140, with the best AUC at $K=140$. The gap to RAND
+remains large for all $K$, so the optimiser is clearly doing better than
+chance regardless of segmentation. The small bump at $K=120$ is within the
+expected variance across images. Based on this ablation we use
+\textbf{$K=140$} as the default segmentation granularity for the qualitative
+examples and the SOTA comparison.
+
+\section{Qualitative masking snapshots (dataset-mean)}
+\label{sec:qualitative}
+
+To complement the aggregate curves above, we visualise how SOFI removes
+segments over time on the final configuration (\emph{dataset-mean} masking,
+$K=140$, max\_iters $=5K$, patience $=2.5K$). The aim is to run a simple
+sanity check on the deletion process: which regions are actually being
+masked at different stages of the MoRF sequence, and how does the model
+score behave on concrete examples, given the non-monotonic curves observed
+earlier in Section~\ref{sec:baselines} and Section~\ref{sec:nseg-ablation}.
+
+Figure~\ref{fig:sofi-cxr-progression} shows one representative case. The
+top-left panel is the original CXR; the remaining panels show masked images
+at fixed fractions of the sequence, $t/K \in \{0.2, 0.4, 0.6, 0.8, 1.0\}$,
+with the currently masked segments outlined and both the retained ratio
+$p_t/p_0$ and the absolute probability $p_t$ printed above each panel. The
+six panels are arranged in a $2\times3$ grid. Additional snapshots for the
+other nine test images, generated with the same settings, are included in
+Appendix~\ref{app:qualitative} for completeness.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/sofi_progression_dmean_k140_case1.png}
+  \caption{SOFI masking progression for a single test image
+  (\emph{dataset-mean} baseline, $K=140$). Top-left: original CXR.
+  Remaining panels: masked images at $t/K \in \{0.2,0.4,0.6,0.8,1.0\}$ with
+  the currently masked segments outlined. Above each panel the retained
+  ratio $p_t/p_0$ and the absolute pneumonia probability $p_t$ are shown.}
+  \label{fig:sofi-cxr-progression}
+\end{figure}
+
+In this example the early steps ($t/K=0.2$ and $0.4$) already mask parts of
+the lung fields and neighbouring structure, and the probability drops from
+$p_0=0.90$ to substantially lower values. Later steps ($t/K=0.6$ and
+$0.8$) mostly affect ribs, borders and remaining background; by the time the
+image is almost flat ($t/K=1.0$) the absolute probability $p_t$ is close to
+zero. The retained ratio $p_t/p_0$ shows small oscillations in the middle
+panels even though $p_t$ itself decreases overall, which is consistent with
+the non-monotonic MoRF tails seen in the dataset-mean curves.
+
+Across the other nine images (Appendix~\ref{app:qualitative}) the detailed
+segment order is not perfectly consistent: in some cases border and rib
+segments are removed relatively early, in others they appear later in the
+sequence. This is expected given the coarse superpixel segmentation and the
+fact that multiple segment orderings can yield similar MoRF AUC. What is
+more stable is the endpoint behaviour: in all cases the fully masked
+dataset-mean image has a very low pneumonia probability, and the early
+deletions tend to remove at least some lung- or opacity-adjacent structure.
+Taken together, these snapshots support the interpretation that the late
+MoRF fluctuations are mainly a masking/ratio effect rather than a clear
+signal that SOFI is systematically ``finding'' new highly predictive
+segments at the end of the sequence, but they should be read as qualitative
+sanity checks rather than definitive evidence.
+
+\section{SOTA comparison on dataset-mean}
+\label{sec:sota}
+
+Finally, we compare SOFI to standard explanation methods on the final
+configuration: dataset-mean baseline, $K=140$, max\_iters $=5K$, patience
+$=2.5K$, and the same 10 correctly classified pneumonia images. All methods
+use the same segmentation and masking operator, so differences in MoRF
+curves can be attributed to the explainer rather than to the occlusion
+baseline.
+
+We consider Score-CAM, DeepLIFT, and segment-wise occlusion sensitivity
+as representative single-pass explainers, alongside SOFI and RAND. Each method produces a scalar
+relevance value per segment, which is used to order segments from most to
+least important; the model is then re-evaluated along this MoRF sequence,
+and the retained probability $p_t/p_0$ is averaged across images.
+
+To study the interaction between the number of segments and method
+performance, we repeat this procedure for
+\[
+K \in \{60, 80, 100, 120, 140\}.
+\]
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Macro-averaged retained AUC on the \textbf{dataset-mean} baseline
+  (10 images) for SOFI and selected SOTA methods, across $K$. Lower is
+  better.}
+  \label{tab:sota-dmean}
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    $K$ & SOFI & Score-CAM & Occ.\ sens. & DeepLIFT & RAND \\
+    \midrule
+     60  & 0.403 & 0.581 & 0.645 & 0.694 & 0.741 \\
+     80  & 0.347 & 0.610 & 0.643 & 0.720 & 0.752 \\
+    100  & 0.324 & 0.608 & 0.686 & 0.733 & 0.775 \\
+    120  & 0.333 & 0.611 & 0.669 & 0.752 & 0.773 \\
+    140  & \textbf{0.290} & 0.603 & 0.675 & 0.746 & 0.799 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:sota-dmean} shows two clear trends:
+
+\begin{enumerate}
+  \item For all $K$, SOFI achieves the lowest retained AUC, i.e.\ the steepest
+  and most sustained drop in pneumonia probability as segments are
+  removed. The standard methods sit between SOFI and RAND, consistent with
+  the expectation that SOFI should be superior in this deletion-based
+  evaluation.
+  \item SOFI improves as $K$ increases, with the best AUC at $K=140$, which
+  matches the segmentation ablation in Table~\ref{tab:seg-ablation}. This
+  supports using $K=140$ as the default segmentation granularity.
+\end{enumerate}
+
+To avoid clutter, Figure~\ref{fig:sota-dmean-k140} shows only one
+representative curve plot: for $K=140$, SOFI, RAND, and the same SOTA
+subset as in Table~\ref{tab:sota-dmean}. The qualitative shape at this
+setting is similar to the other $K$ values.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{fig/sofi_vs_stoa_k140.png}
+  \caption{Retained curves on the \textbf{dataset-mean} baseline
+  ($K=140$, 10 images). SOFI, Score-CAM, occlusion sensitivity, DeepLIFT,
+  and RAND are evaluated on the same segmentation and mask. Curves show the
+  macro-averaged retained probability $p_t/p_0$ as a function of the masked
+  fraction $t/K$.}
+  \label{fig:sota-dmean-k140}
+\end{figure}
+
+In Figure~\ref{fig:sota-dmean-k140}, SOFI (solid blue) drops very sharply in
+the first ${\sim}10$--$15\%$ of the sequence, down to a retained probability
+below $0.1$, and then rises gradually before collapsing again near full
+masking. The SOTA curves (dashed) are much flatter: Score-CAM and occlusion
+sensitivity remain in the $0.6$--$0.9$ range for most of the sequence and
+only fall steeply once more than ${\sim}80$--$90\%$ of the segments have
+been masked; DeepLIFT behaves similarly and lies close to RAND for much of
+the curve. This matches the AUC ranking in Table~\ref{tab:sota-dmean}: SOFI
+achieves the lowest AUC ($0.290$), Score-CAM is second-best, occlusion
+sensitivity sits in-between Score-CAM and RAND, and DeepLIFT is only
+slightly better than RAND.
+
+When these MoRF curves are aligned with the qualitative examples in
+Section~\ref{sec:qualitative}, the picture is broadly consistent: SOFI concentrates
+its early deletions on segments that substantially reduce the pneumonia
+score, producing the steep initial drop, whereas the gradient- and CAM-based
+methods spread relevance more broadly and therefore remove a mixture of
+relevant and less relevant segments in the early steps, leading to a much
+slower decay in $p_t/p_0$. The late oscillations and final collapse near
+$t/K \approx 1$ are consistent with the endpoint effects discussed in
+Sections~\ref{sec:baselines} and~\ref{sec:nseg-ablation} and are present
+for all methods, not only for SOFI.
+
+To complement this curve-based comparison, Figure~\ref{fig:segment-maps}
+shows, for one representative test image, which segments are highlighted by
+SOFI and by selected SOTA methods. For each explainer we visualise the top
+$k$ segments (here: $k=20$) overlaid on the CXR. Additional segment maps
+for the remaining test images are included in Appendix~\ref{app:segmentmaps}.
+
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case1.png}
+  \caption{Top-ranked segments for a single test image
+  (\emph{dataset-mean} baseline, $K=140$). From left to right:
+  original CXR with superpixels, SOFI, Score-CAM, DeepLIFT, and
+  occlusion sensitivity. For each explainer the top $k$ segments
+  ($k=20$) are highlighted. In this example, SOFI assigns relatively
+  compact groups of segments within the lung fields, while the
+  single-pass explainers highlight a more diffuse mix of lung,
+  rib and border regions.}
+  \label{fig:segment-maps}
+\end{figure}
+
+\subsection*{Limitations and next steps}
+
+The present analysis focuses on a small set of ten correctly classified
+pneumonia CXRs and a single classifier. A more exhaustive study would extend the dataset, explore additional segmentation granularities or alternative segmentation schemes directly on dataset-mean, and include
+per-image absolute-probability plots for each method to further separate endpoint artefacts from genuine MoRF failures.
+Nevertheless, within this controlled setting the results already answer the
+key questions raised in the feedback:
+
+\begin{itemize}
+  \item The methods are correctly implemented and compared on a common
+  baseline; the sharp drop followed by an apparent increase is largely
+  explained by the masking endpoint and the ratio metric $p_t/p_0$.
+  \item The number of segments $K$ has a predictable effect on AUC but does
+  not fundamentally change the MoRF shape; larger $K$ values help slightly
+  without removing the tail oscillations entirely.
+  \item On a realistic deletion baseline (dataset-mean), SOFI consistently
+  produces steeper MoRF curves and more targeted deletions than the
+  standard single-pass explainers evaluated here.
+
+\end{itemize}
+
+\clearpage
+\appendix
+
+\section{Additional qualitative examples}
+\label{app:qualitative}
+
+\begin{center}
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case2.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case3.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case4.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case5.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case6.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case7.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case8.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case9.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_progression_dmean_k140_case10.png}
+\end{center}
+
+\section{Additional segment maps}
+\label{app:segmentmaps}
+
+\begin{center}
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case2.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case3.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case4.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case5.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case6.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case7.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case8.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case9.png}\\[1em]
+  \includegraphics[width=\textwidth]{fig/sofi_vs_sota_top20_case10.png}
+\end{center}
+
+\end{document}

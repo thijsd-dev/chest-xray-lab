@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person1439_virus_2453.jpeg",
+  "method": "IntegratedGradients",
+  "K": 101,
+  "baseline_mode": "dataset-mean",
+  "p0": 0.976010262966156,
+  "auc_raw": 0.7462111711502075,
+  "rand_raw_mean": 0.7315066307783127,
+  "rand_raw_std": 0.03009050178785024,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

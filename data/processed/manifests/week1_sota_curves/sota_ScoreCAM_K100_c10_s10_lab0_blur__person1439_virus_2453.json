@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person1439_virus_2453.jpeg",
+  "method": "ScoreCAM",
+  "K": 101,
+  "baseline_mode": "blur",
+  "p0": 0.976010262966156,
+  "auc_raw": 0.9306994080543518,
+  "rand_raw_mean": 0.8894121199846268,
+  "rand_raw_std": 0.034547381299576234,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

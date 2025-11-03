@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person520_bacteria_2204.jpeg",
+  "method": "DeepLIFT",
+  "K": 78,
+  "baseline_mode": "dataset-mean",
+  "p0": 0.9989853501319885,
+  "auc_raw": 0.6843604445457458,
+  "rand_raw_mean": 0.7202419191598892,
+  "rand_raw_std": 0.027169098847891787,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

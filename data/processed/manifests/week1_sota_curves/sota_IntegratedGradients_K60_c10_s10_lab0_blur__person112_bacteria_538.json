@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/test/PNEUMONIA/person112_bacteria_538.jpeg",
+  "method": "IntegratedGradients",
+  "K": 61,
+  "baseline_mode": "blur",
+  "p0": 0.9992984533309937,
+  "auc_raw": 0.891055166721344,
+  "rand_raw_mean": 0.9284409979979197,
+  "rand_raw_std": 0.017918554342137454,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person520_bacteria_2204.jpeg",
+  "method": "OccSensitivity",
+  "K": 96,
+  "baseline_mode": "blur",
+  "p0": 0.9989853501319885,
+  "auc_raw": 0.8989086151123047,
+  "rand_raw_mean": 0.944003184636434,
+  "rand_raw_std": 0.01050964828671025,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

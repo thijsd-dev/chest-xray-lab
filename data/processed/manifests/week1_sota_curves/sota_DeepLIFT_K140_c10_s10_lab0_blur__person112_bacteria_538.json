@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/test/PNEUMONIA/person112_bacteria_538.jpeg",
+  "method": "DeepLIFT",
+  "K": 141,
+  "baseline_mode": "blur",
+  "p0": 0.9992984533309937,
+  "auc_raw": 0.8929046392440796,
+  "rand_raw_mean": 0.947787786523501,
+  "rand_raw_std": 0.014967158149935504,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

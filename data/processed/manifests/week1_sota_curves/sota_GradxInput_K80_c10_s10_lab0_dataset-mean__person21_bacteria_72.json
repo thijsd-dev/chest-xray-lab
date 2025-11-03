@@ -1,0 +1,15 @@
+{
+  "img": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person21_bacteria_72.jpeg",
+  "method": "GradxInput",
+  "K": 73,
+  "baseline_mode": "dataset-mean",
+  "p0": 0.7888375520706177,
+  "auc_raw": 0.7565447092056274,
+  "rand_raw_mean": 0.785092905163765,
+  "rand_raw_std": 0.05388067815997612,
+  "params": {
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  }
+}

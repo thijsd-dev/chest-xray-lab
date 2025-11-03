@@ -1,0 +1,26 @@
+{
+  "image": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person21_bacteria_72.jpeg",
+  "K": 92,
+  "p0": 0.7888375520706177,
+  "baseline": 1.0,
+  "params": {
+    "n_segments": 100,
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  },
+  "aucs": {
+    "SEED_raw": 0.5714850425720215,
+    "SEED_b": 0.07348959147930145,
+    "SOFI_HL_raw": 0.5500363111495972,
+    "SOFI_HL_b": 0.07348959147930145,
+    "RAND_raw_mean": 1.072152962287267,
+    "RAND_raw_std": 0.03503749510357604
+  },
+  "hl_meta": {
+    "stopped_reason": "max_iters",
+    "iters_done": 460,
+    "best_improvement": 0.002561211585998535
+  },
+  "seed": 9042
+}

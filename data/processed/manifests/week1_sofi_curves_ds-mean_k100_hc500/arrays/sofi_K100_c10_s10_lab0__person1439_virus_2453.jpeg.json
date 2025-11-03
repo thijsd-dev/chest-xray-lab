@@ -1,0 +1,29 @@
+{
+  "image": "/content/chest_xray_cache/cache_3a0b791144/images/train/PNEUMONIA/person1439_virus_2453.jpeg",
+  "K": 101,
+  "p0": 0.976010262966156,
+  "baseline": 0.5980010628700256,
+  "params": {
+    "n_segments": 100,
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "use_lab": false
+  },
+  "aucs": {
+    "SEED_raw": 0.322796106338501,
+    "SEED_b": 0.07156052440404892,
+    "SOFI_HL_raw": 0.2713618576526642,
+    "SOFI_HL_b": 0.06973599642515182,
+    "RAND_raw_mean": 0.7650785346825918,
+    "RAND_raw_std": 0.026435543226624586
+  },
+  "hl_meta": {
+    "stopped_reason": "max_iters",
+    "iters_done": 500,
+    "best_improvement": 0.009636878967285156,
+    "patience_scale": 2.5,
+    "max_iters_per": 500
+  },
+  "seed": 3042,
+  "baseline_mode": "dataset-mean"
+}
